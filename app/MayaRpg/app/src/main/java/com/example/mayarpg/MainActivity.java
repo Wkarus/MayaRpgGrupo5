@@ -2,6 +2,7 @@ package com.example.mayarpg;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -20,6 +21,8 @@ import retrofit2.Callback;
 import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity {
+
+    private static final String TAG = "MainActivity";
 
     private FirebaseAuth firebaseAuth;
     private SessionManager sessionManager;
@@ -67,7 +70,6 @@ public class MainActivity extends AppCompatActivity {
                             return;
                         }
 
-                        // Sincroniza tambem com backend para obter JWT usado nas rotas da API.
                         loginBackendAndOpenHome(usuario, senha, user);
                     });
         });
@@ -93,24 +95,100 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 1) Tenta JWT via Firebase ID token ({@code POST /auth/firebase}) — cria/sync do utilizador na MySQL.<br>
+     * 2) Se o servidor nao tiver Firebase Admin (503), cai para login email/senha na API.<br>
+     * 3) Falhas de rede mostram mensagem com URL em modo debug.
+     */
     private void loginBackendAndOpenHome(String email, String senha, FirebaseUser firebaseUser) {
-        AuthService.LoginRequest body = new AuthService.LoginRequest(email, senha);
-        ApiClient.authService(this).login(body).enqueue(new Callback<AuthService.LoginResponse>() {
-            @Override
-            public void onResponse(Call<AuthService.LoginResponse> call, Response<AuthService.LoginResponse> response) {
-                if (!response.isSuccessful() || response.body() == null || response.body().token == null) {
-                    Toast.makeText(MainActivity.this, "Login backend falhou.", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                sessionManager.saveToken(response.body().token);
-                openHome(firebaseUser);
+        firebaseUser.getIdToken(false).addOnCompleteListener(taskToken -> {
+            if (!taskToken.isSuccessful() || taskToken.getResult() == null) {
+                Exception e = taskToken.getException();
+                Log.w(TAG, "Firebase getIdToken falhou", e);
+                loginBackendWithPassword(email, senha, firebaseUser);
+                return;
+            }
+            String idToken = taskToken.getResult().getToken();
+            if (idToken == null || idToken.isEmpty()) {
+                loginBackendWithPassword(email, senha, firebaseUser);
+                return;
             }
 
-            @Override
-            public void onFailure(Call<AuthService.LoginResponse> call, Throwable t) {
-                Toast.makeText(MainActivity.this, "Erro ao conectar com API.", Toast.LENGTH_SHORT).show();
-            }
+            ApiClient.authService(this)
+                    .loginWithFirebase(new AuthService.FirebaseLoginRequest(idToken))
+                    .enqueue(new Callback<AuthService.LoginResponse>() {
+                        @Override
+                        public void onResponse(Call<AuthService.LoginResponse> call,
+                                              Response<AuthService.LoginResponse> response) {
+                            if (response.code() == 503) {
+                                // Servidor sem credenciais Firebase Admin: modo legado.
+                                loginBackendWithPassword(email, senha, firebaseUser);
+                                return;
+                            }
+                            if (response.isSuccessful()
+                                    && response.body() != null
+                                    && response.body().token != null) {
+                                onBackendLoginSuccess(response.body(), firebaseUser);
+                                return;
+                            }
+                            if (response.code() == 403) {
+                                Toast.makeText(MainActivity.this,
+                                        "Email ainda nao verificado no servidor.",
+                                        Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                            Toast.makeText(MainActivity.this,
+                                    "Login backend falhou.",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+
+                        @Override
+                        public void onFailure(Call<AuthService.LoginResponse> call, Throwable t) {
+                            Log.e(TAG, "Falha de rede POST /auth/firebase", t);
+                            showConnectError(t);
+                        }
+                    });
         });
+    }
+
+    private void loginBackendWithPassword(String email, String senha, FirebaseUser firebaseUser) {
+        ApiClient.authService(this)
+                .login(new AuthService.LoginRequest(email, senha))
+                .enqueue(new Callback<AuthService.LoginResponse>() {
+                    @Override
+                    public void onResponse(Call<AuthService.LoginResponse> call,
+                                          Response<AuthService.LoginResponse> response) {
+                        if (!response.isSuccessful()
+                                || response.body() == null
+                                || response.body().token == null) {
+                            Toast.makeText(MainActivity.this,
+                                    "Login backend falhou.",
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        onBackendLoginSuccess(response.body(), firebaseUser);
+                    }
+
+                    @Override
+                    public void onFailure(Call<AuthService.LoginResponse> call, Throwable t) {
+                        Log.e(TAG, "Falha de rede POST /auth/login", t);
+                        showConnectError(t);
+                    }
+                });
+    }
+
+    private void onBackendLoginSuccess(AuthService.LoginResponse body, FirebaseUser firebaseUser) {
+        sessionManager.saveToken(body.token);
+        openHome(firebaseUser);
+    }
+
+    private void showConnectError(Throwable t) {
+        if (BuildConfig.DEBUG) {
+            String msg = "API " + BuildConfig.API_BASE_URL + "\n" + (t.getMessage() != null ? t.getMessage() : "rede");
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(this, "Erro ao conectar com API.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void openHome(FirebaseUser user) {

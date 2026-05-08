@@ -18,7 +18,12 @@ const envSchema = z.object({
   ALLOW_START_WITHOUT_DB: z
     .enum(["true", "false"])
     .default("true")
-    .transform((value) => value === "true")
+    .transform((value) => value === "true"),
+  /** Caminho absoluto ou relativo ao cwd para a JSON da conta de serviço Firebase (opcional). */
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.preprocess((v) => {
+    if (v === undefined || v === "") return undefined;
+    return String(v).trim();
+  }, z.string().min(1).optional())
 });
 
 const parsed = envSchema.safeParse(process.env);

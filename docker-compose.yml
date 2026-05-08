@@ -31,6 +31,10 @@ services:
       retries: 20
       start_period: 15s
 
+  # API Express — para login do app Android com Firebase (JWT + MySQL), adicione no servico abaixo:
+  # volumes: ./backend/firebase-service-account.json -> /app/firebase-service-account.json:ro
+  # environment: FIREBASE_SERVICE_ACCOUNT_PATH=/app/firebase-service-account.json
+  #
   # API Express no container escuta 8080; no host usamos 8081 se a 8080 ja estiver ocupada.
   api:
     build:
@@ -40,6 +44,8 @@ services:
     restart: unless-stopped
     ports:
       - "8081:8080"
+    volumes:
+      - ./backend/firebase-service-account.json:/app/firebase-service-account.json:ro
     environment:
       PORT: "8080"
       NODE_ENV: production
@@ -53,6 +59,7 @@ services:
       DEMO_ADMIN_EMAIL: mayarpg@gmail.com
       DEMO_ADMIN_PASSWORD: "1234"
       ALLOW_START_WITHOUT_DB: "false"
+      FIREBASE_SERVICE_ACCOUNT_PATH: /app/firebase-service-account.json
     depends_on:
       mysql:
         condition: service_healthy

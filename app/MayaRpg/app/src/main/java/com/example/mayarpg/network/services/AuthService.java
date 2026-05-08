@@ -10,6 +10,18 @@ public interface AuthService {
     @POST("auth/login")
     Call<LoginResponse> login(@Body LoginRequest body);
 
+    @POST("auth/firebase")
+    Call<LoginResponse> loginWithFirebase(@Body FirebaseLoginRequest body);
+
+    class FirebaseLoginRequest {
+        @SerializedName("idToken")
+        public final String idToken;
+
+        public FirebaseLoginRequest(String idToken) {
+            this.idToken = idToken;
+        }
+    }
+
     class LoginRequest {
         @SerializedName("email")
         public final String email;

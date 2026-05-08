@@ -25,6 +25,7 @@ app.get("/", (_req, res) => {
     service: "Maya Admin API",
     health: "/health",
     login: "POST /auth/login",
+    firebaseLogin: "POST /auth/firebase",
     publicados: "GET /posts",
     agenda: "GET /agenda/disponivel"
   });

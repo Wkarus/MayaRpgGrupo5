@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     id("com.google.gms.google-services")
 }
+
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.reader()?.use { load(it) }
+}
+
+fun quoteForBuildConfig(value: String): String =
+    value.replace("\\", "\\\\").replace("\"", "\\\"")
 
 android {
     namespace = "com.example.mayarpg"
@@ -19,8 +28,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Base local da API para o emulador Android.
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+        // Emulador: http://10.0.2.2:8080 aponta para localhost do PC. Telefone USB/Wi‑Fi:
+        // defina MAYA_API_BASE_URL em local.properties (ex.: http://192.168.15.8:8080/).
+        val apiUrl = localProps.getProperty("MAYA_API_BASE_URL", "http://10.0.2.2:8080/")
+            .trim()
+            .let { if (it.endsWith("/")) it else "$it/" }
+        buildConfigField("String", "API_BASE_URL", "\"${quoteForBuildConfig(apiUrl)}\"")
     }
 
     buildTypes {
